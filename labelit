@@ -1,0 +1,141 @@
+import cv from '@techstark/opencv-js';
+import { writeFileSync } from "fs";
+const { Canvas, createCanvas, Image, ImageData, loadImage, OffscreenCanvas } = require('canvas');
+import sharp from "sharp";
+import Tesseract from 'tesseract.js';
+const { JSDOM } = require('jsdom');
+
+installDOM();
+function installDOM() {
+    const dom = new JSDOM();
+    global.document = dom.window.document;
+    // The rest enables DOM image and canvas and is provided by node-canvas
+    global.Image = Image;
+    global.HTMLCanvasElement = Canvas as any;
+    global.ImageData = ImageData;
+    global.HTMLImageElement = Image;
+    global.OffscreenCanvas = OffscreenCanvas;
+}
+
+async function processImage(imagePath) {
+    try {
+
+        console.log(cv.getBuildInformation())
+
+        const image = await loadImage(imagePath);
+        let src = cv.imread(image);
+        let contours: any = new cv.MatVector();
+        let hierarchy = new cv.Mat();
+
+        let grayscale = new cv.Mat();
+        cv.cvtColor(src, grayscale, cv.COLOR_RGBA2GRAY, 0);
+
+        let blurred = new cv.Mat();
+        cv.GaussianBlur(grayscale, blurred, new cv.Size(5, 5), 0);
+
+        let thresholded = new cv.Mat();
+        cv.adaptiveThreshold(
+            blurred,
+            thresholded,
+            255,
+            cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv.THRESH_BINARY_INV,
+            11,
+            2
+        );
+
+        let edges = new cv.Mat();
+        cv.Canny(thresholded, edges, 50, 150, 3, false);
+
+        let dilated = new cv.Mat();
+        let M = cv.Mat.ones(5, 5, cv.CV_8U);
+        cv.dilate(edges, dilated, M);
+
+        cv.findContours(
+            dilated,
+            contours,
+            hierarchy,
+            cv.RETR_EXTERNAL,
+            cv.CHAIN_APPROX_SIMPLE
+        );
+
+        let labels = [];
+        let fields = [];
+        for (let i = 0; i < contours.size(); i++) {
+            let contour = contours.get(i);
+            let rect = cv.boundingRect(contour);
+
+            if (rect.width > 10 && rect.height > 5) {
+                let point1 = new cv.Point(rect.x, rect.y);
+                let point2 = new cv.Point(rect.x + rect.width, rect.y + rect.height);
+                cv.rectangle(src, point1, point2, [255, 0, 0, 255], 1);
+
+                cv.rectangle(src, new cv.Point(rect.x, rect.y + rect.height), new cv.Point(rect.x + 24, rect.y + rect.height + 20),  [255, 0, 0, 255], cv.FILLED);
+                cv.putText(
+                    src,
+                    i.toString(),
+                    new cv.Point(rect.x + 2, rect.y + rect.height + 14),
+                    cv.FONT_HERSHEY_DUPLEX,
+                    0.5,
+                    [255, 255, 255, 255]
+                );
+
+                fields.push(rect);
+            }
+        }
+
+
+
+        let associations = [];
+        const canvas = createCanvas(src.cols, src.rows);
+        cv.imshow(canvas, src);
+        writeFileSync('public/output.jpg', canvas.toBuffer('image/jpeg'));
+
+        for (let label of labels) {
+            for (let field of fields) {
+                if (Math.abs((label.rect.x + label.rect.width) - field.x) < 30 &&
+                    label.rect.y < field.y + field.height &&
+                    field.y < label.rect.y + label.rect.height) {
+                    associations.push({ labelText: label.text, fieldRect: field });
+                    break;
+                }
+            }
+        }
+
+        src.delete();
+        grayscale.delete();
+        contours.delete();
+        hierarchy.delete();
+
+        return associations;
+    } catch (e) {
+        console.error(e)
+    }
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
+
+
+async function test() {
+    await sleep(2200);
+    try {
+        console.log(cv.getBuildInformation())
+    } catch (e) {
+        console.log(e);
+    }
+}
+
+test().then(() => {
+    processImage('public/test3.png').then(result => {
+        console.log(result);
+        // for (let association of result) {
+        //     console.log(`Field at ${JSON.stringify(association.fieldRect)} is labeled as '${association.labelText.trim()}'`);
+        // }
+    });
+});
+
+
