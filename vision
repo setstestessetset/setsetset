@@ -1,0 +1,39 @@
+import { processImage } from "./form-extract";
+import { BaseVision } from "./seeact";
+import { ChatOpenAI } from "langchain/chat_models/openai";
+
+const prompt = `Act like an AI assisant that is helping a human navigating and interacting based on the label of the image.
+ The human wants to : Bring my PDF into jungle folder .
+
+ Tell the human the action that he needs to do and the label number.
+
+ Possible_actions :
+    - <Mouse_Double_Click />
+    - <Mouse_Click />
+    - <Mouse_Hover /> 
+    - <Mouse_Drag_From> Label number </Mouse_Drag_From>
+    - <Mouse_Drag_To> Label number </Mouse_Drag_To>
+    - <Keyboard_Type> Text </Keyboard_Type>
+
+ Response only the number of the label with :
+ <Result> 
+    <Label> 1...n  </Label>
+    <Observation> the result of the action </Observation>
+    <Action> ...(Possible_actions)  </Action>
+    ... (this Action/Observation can repeat N times)
+ </Result>
+ <
+`;
+
+async function main() {
+    const vision = new BaseVision(new ChatOpenAI({ modelName: "gpt-4-vision-preview", maxTokens: 1024, openAIApiKey: "" }));
+    // await processImage('public/test3.png');
+
+    console.time("vision");
+    vision.call('public/output.jpg', prompt).then(result => {
+        console.log("RESULTr", result);
+        console.timeEnd("vision");
+    });
+}
+
+main();
